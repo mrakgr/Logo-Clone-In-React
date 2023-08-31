@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.5.2",
+    "parjs": "^0.12.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
