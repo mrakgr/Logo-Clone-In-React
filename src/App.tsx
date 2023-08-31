@@ -27,7 +27,7 @@ type Op =
 const pFloat = () => float().pipe(thenq(whitespace()))
 const pComma = () => string(",").pipe(thenq(whitespace()))
 
-const pTemplate = <T extends string>(key: T) => whitespace().pipe(qthen(key)).pipe((thenq(space()))).pipe((thenq(whitespace()))).pipe(mapConst(key))
+const pTemplate = <T extends string>(key: T) => whitespace().pipe(qthen(key), thenq(space()), thenq(whitespace()), mapConst(key))
 const pZero = <T extends string>(key: T) => pTemplate(key).pipe(map((x): [T] => [x]))
 const pCenter = () => pZero("center")
 const pPenUp = () => pZero("penup")
@@ -51,8 +51,7 @@ const pPenColor = () => pTemplate("pencolor").pipe(then(pXYZ()))
 
 const pStatement = (): Parjser<Op> =>
   pCenter().pipe(or(pPenUp(), pPenDown())) // 0
-    .pipe(or(pForward(), pBackward(), pLeft(), pRight())) // 1
-    .pipe(or(pDirection(), pGoX(), pGoY(), pPenWidth())) // 1
+    .pipe(or(pForward(), pBackward(), pLeft(), pRight()), or(pDirection(), pGoX(), pGoY(), pPenWidth())) // 1
     .pipe(or(pGo())) // XY
     .pipe(or(pPenColor())) // XYZ
     .pipe(or(fail({reason: "expected one of: center, penup, pendown, forward, backward, turnleft, turnright, direction, gox, goy, penwidth, go, pencolor"})))
