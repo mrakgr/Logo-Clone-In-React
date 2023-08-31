@@ -4,7 +4,7 @@ import { MutableRefObject, useRef, useState } from 'react'
 import './App.css'
 
 import Editor, {Monaco} from '@monaco-editor/react'
-import { editor } from "monaco-editor"
+import { editor, MarkerSeverity } from "monaco-editor"
 
 import {string, whitespace, float, Parjser, ParjsCombinator} from 'parjs'
 import {between, or, then, qthen, thenq, map, mapConst, many} from 'parjs/combinators'
@@ -24,7 +24,7 @@ type Op =
   | [op: "go", data: {x: number, y: number}]
   | [op: "pencolor", data: {x : number, y : number,z : number}]
 
-  
+
 const pFloat = () => float().pipe(thenq(whitespace()))
 const pComma = () => string(",").pipe(thenq(whitespace()))
 
@@ -69,10 +69,25 @@ function App() {
   }
 
   function showValue() {
-    const editor = editorRef.current
-    if (!editor) throw Error("Editor not defined.")
+    const x = editorRef.current
+    if (!x) throw Error("Editor not defined.")
     
-    // const text = editor.getValue()
+    const model = x.getModel()
+    if (!model) throw Error("Model not defined.")
+    const m : editor.IMarkerData = {
+      severity: MarkerSeverity.Error,
+      message: "qwe",
+      startLineNumber: 1,
+      endLineNumber: 2,
+      startColumn: 1,
+      endColumn: 1,
+    }
+    
+    const old = editor.getModelMarkers({})
+    alert(JSON.stringify(old))
+    editor.setModelMarkers(model,'',[m])
+    const text = model.getValue()
+    // alert(text)
     // alert(pLogo().parse(text));
   }
 
@@ -90,7 +105,6 @@ function App() {
       <div style={{flex: 1}}>
         <button onClick={showValue}>Show value</button>
         <Editor 
-          defaultLanguage="plaintext"
           defaultValue="forward 150
 backward"
           onMount={handleEditorDidMount}
