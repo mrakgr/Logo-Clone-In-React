@@ -5,7 +5,7 @@ import './App.css'
 
 import * as monaco from "monaco-editor"
 
-import { string, whitespace, float, Parjser, ParjsCombinator } from 'parjs'
+import { string, whitespace, float, Parjser, fail, spaces1, space } from 'parjs'
 import { between, or, then, qthen, thenq, map, mapConst, many } from 'parjs/combinators'
 
 type Op =
@@ -27,7 +27,7 @@ type Op =
 const pFloat = () => float().pipe(thenq(whitespace()))
 const pComma = () => string(",").pipe(thenq(whitespace()))
 
-const pTemplate = <T extends string>(key: T) => whitespace().pipe(qthen(key)).pipe((thenq(whitespace()))).pipe(mapConst(key))
+const pTemplate = <T extends string>(key: T) => whitespace().pipe(qthen(key)).pipe((thenq(space()))).pipe((thenq(whitespace()))).pipe(mapConst(key))
 const pZero = <T extends string>(key: T) => pTemplate(key).pipe(map((x): [T] => [x]))
 const pCenter = () => pZero("center")
 const pPenUp = () => pZero("penup")
@@ -55,9 +55,7 @@ const pStatement = (): Parjser<Op> =>
     .pipe(or(pDirection(), pGoX(), pGoY(), pPenWidth())) // 1
     .pipe(or(pGo())) // XY
     .pipe(or(pPenColor())) // XYZ
-
-// const pLogo = () : Parjser<Op[]> =>
-//   pStatement().pipe(many())
+    .pipe(or(fail({reason: "expected one of: center, penup, pendown, forward, backward, turnleft, turnright, direction, gox, goy, penwidth, go, pencolor"})))
 
 function App() {
   const editorRef: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null> = useRef(null);
