@@ -271,18 +271,30 @@ function App() {
     model ? processModel(model) : null
   }
 
+  const resizeCanvasWindowSize = () => {
+    const r = canvasRef.current
+    if (r) {
+      r.width = window.innerWidth * 2 / 3
+      r.height = window.innerHeight
+    }
+  }
+
   const setupMonaco = (el: HTMLDivElement) => {
     if (!editorRef.current) {
       const uri = monaco.Uri.parse("inmemory://test");
       const value = window.localStorage.getItem("text") ?? "forward 150\nbackward"
       const model = monaco.editor.createModel(value, "logo-clone-lang", uri);
-      const editor = monaco.editor.create(el, { model });
-      const f = () => {
-        window.localStorage.setItem("text", model.getValue())
+      const editor = monaco.editor.create(el, { model, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, minimap: { enabled: false } });
+      window.onresize = () => {
+        editor.layout({ width: window.innerWidth / 3, height: window.innerHeight / 2 })
+        resizeCanvasWindowSize()
         processModel(model)
       }
       processModel(model)
-      fromEventPattern(e => model.onDidChangeContent(e)).pipe(debounceTime(100)).subscribe(f)
+      fromEventPattern(e => model.onDidChangeContent(e)).pipe(debounceTime(100)).subscribe(() => {
+        window.localStorage.setItem("text", model.getValue())
+        processModel(model)
+      })
       editorRef.current = editor
     }
   }
@@ -290,19 +302,18 @@ function App() {
   const setupCanvas = (el: HTMLCanvasElement) => {
     if (!canvasRef.current) {
       canvasRef.current = el
-      el.width = 890
-      el.height = 920
+      resizeCanvasWindowSize()
       tryProcessModel()
     }
   }
 
   return (
-    <div style={{ width: "1800px", height: "920px", display: "flex", flexDirection: "row" }}>
-      <div style={{ flex: 1, height: "100%", border: "2px gray solid" }}>
-        <div ref={setupMonaco} style={{ height: "100%" }}></div>
+    <div style={{ width: "100vw", height: "100vh", padding: "10px", display: "flex", flexDirection: "row" }}>
+      <div style={{ flex: 0.5, height: "100%" }}>
+        <div ref={setupMonaco} style={{ height: "100%", width: "100%", border: "2px gray solid" }}></div>
       </div>
       <div style={{ flex: 1, height: "100%" }}>
-        <canvas ref={setupCanvas} style={{ border: "2px gray solid" }}>Your browser does not support the canvas element.</canvas>
+        <canvas ref={setupCanvas} style={{ width: "100%", height: "100%", border: "2px gray solid" }}>Your browser does not support the canvas element.</canvas>
       </div>
     </div>
   )
