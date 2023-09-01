@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { MutableRefObject, useRef, useState } from 'react'
+import { MutableRefObject, memo, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 import * as monaco from "monaco-editor"
 
 import { string, whitespace, float, Parjser, fail, spaces1, space, result, eof, newline } from 'parjs'
 import { between, or, then, qthen, thenq, map, mapConst, many, thenPick } from 'parjs/combinators'
+
+import turtleImageSrc from './assets/turtle.png'
 
 type Op =
   | [op: "pass"]
@@ -25,15 +27,15 @@ type Op =
 
 const pFloat = () => float().pipe(thenq(whitespace()))
 const pComma = () => string(",").pipe(thenq(whitespace()))
-const pSpace = (hasFollowup : boolean) => hasFollowup ? space().pipe(or(newline(), fail({reason: "expecting space or newline"}))) : result("")
+const pSpace = (hasFollowup: boolean) => hasFollowup ? space().pipe(or(newline(), fail({ reason: "expecting space or newline" }))) : result("")
 
-const pTemplate = <T extends string>(key: T, hasFollowup : boolean) => whitespace().pipe(qthen(key), qthen(pSpace(hasFollowup)), qthen(whitespace()), mapConst(key))
-const pZero = <T extends string>(key: T) => pTemplate(key,false).pipe(map((x): [T] => [x]))
+const pTemplate = <T extends string>(key: T, hasFollowup: boolean) => whitespace().pipe(qthen(key), qthen(pSpace(hasFollowup)), qthen(whitespace()), mapConst(key))
+const pZero = <T extends string>(key: T) => pTemplate(key, false).pipe(map((x): [T] => [x]))
 const pCenter = () => pZero("center")
 const pPenUp = () => pZero("penup")
 const pPenDown = () => pZero("pendown")
 
-const pOne = <T extends string>(key: T) => pTemplate(key,true).pipe(then(pFloat()))
+const pOne = <T extends string>(key: T) => pTemplate(key, true).pipe(then(pFloat()))
 const pForward = () => pOne("forward")
 const pBackward = () => pOne("backward")
 const pLeft = () => pOne("turnleft")
@@ -46,8 +48,8 @@ const pPenWidth = () => pOne("penwidth")
 const pFloatComma = () => pFloat().pipe(thenq(pComma()))
 const pXY = () => pFloatComma().pipe(then(pFloat())).pipe(map(([x, y]) => ({ x, y })))
 const pXYZ = () => pFloatComma().pipe(then(pFloatComma(), pFloat())).pipe(map(([r, g, b]) => ({ r, g, b })))
-const pGo = () => pTemplate("go",true).pipe(then(pXY()))
-const pPenColor = () => pTemplate("pencolor",true).pipe(then(pXYZ()))
+const pGo = () => pTemplate("go", true).pipe(then(pXY()))
+const pPenColor = () => pTemplate("pencolor", true).pipe(then(pXYZ()))
 const pPass = (): Parjser<[op: "pass"]> => whitespace().pipe(qthen(eof()), mapConst(["pass"]))
 
 const pStatement = (): Parjser<Op> =>
@@ -67,7 +69,7 @@ interface State {
   penup: boolean
 }
 
-function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement): void {
+function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement, turtleImage: HTMLImageElement): void {
   const ctx = canvas.getContext("2d")
   if (!ctx) throw Error("Canvas context is null.")
 
@@ -139,6 +141,14 @@ function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement): void {
     ctx.strokeStyle = rgbCssString(q)
   }
 
+  const drawTurtle = () => {
+    ctx.save()
+    ctx.translate(state.position.x, state.position.y)
+    ctx.rotate(state.direction / 360 * 2 * Math.PI)
+    ctx.drawImage(turtleImage, -20, -20, 40, 40)
+    ctx.restore()
+  }
+
   const process = ([op, data]: Op) => {
     switch (op) {
       case "pass": {
@@ -204,17 +214,24 @@ function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement): void {
 
   resetCtx()
   ops.forEach(process)
-  ctx.stroke()
+  flush()
+  drawTurtle()
 }
 
 function App() {
   const editorRef: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null> = useRef(null);
   const canvasRef: MutableRefObject<HTMLCanvasElement | null> = useRef(null);
+  const turtleImage = useMemo(() => {
+    const x = new Image()
+    x.onload = () => { processModel(editorRef.current?.getModel()) }
+    x.src = turtleImageSrc
+    return x
+  }, [])
 
   const drawOps = (ops: Op[]) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    drawOpsOnCanvas(ops, canvas)
+    drawOpsOnCanvas(ops, canvas, turtleImage)
   }
 
   const processModel = (model: monaco.editor.ITextModel | null | undefined) => {
@@ -239,9 +256,13 @@ function App() {
     }
   }
 
-  const setupCanvas = (el : HTMLCanvasElement) => {
-    canvasRef.current = el
-    processModel(editorRef.current?.getModel())
+  const setupCanvas = (el: HTMLCanvasElement) => {
+    if (!canvasRef.current) {
+      canvasRef.current = el
+      el.width = 890
+      el.height = 920
+      processModel(editorRef.current?.getModel())
+    }
   }
 
   function validate(model: monaco.editor.ITextModel) {
@@ -272,14 +293,12 @@ function App() {
   }
 
   return (
-    <div style={{ width: "1800px", height: "900px", backgroundColor: "lightgray", border: "2px gray solid", display: "flex", flexDirection: "row" }}>
-      <div style={{ flex: 1 }}>
+    <div style={{ width: "1800px", height: "920px", display: "flex", flexDirection: "row" }}>
+      <div style={{ flex: 1, height: "100%", border: "2px gray solid" }}>
         <div ref={setupMonaco} style={{ height: "100%" }}></div>
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ height: "100%" }}>
-          <canvas ref={setupCanvas} style={{ height: "100%", width: "100%" }}>Your browser does not support the canvas element.</canvas>
-        </div>
+      <div style={{ flex: 1, height: "100%" }}>
+        <canvas ref={setupCanvas} style={{ border: "2px gray solid" }}>Your browser does not support the canvas element.</canvas>
       </div>
     </div>
   )
