@@ -282,7 +282,7 @@ function App() {
         processModel(model)
       }
       processModel(model)
-      fromEventPattern(e => model.onDidChangeContent(e)).pipe(debounceTime(500)).subscribe(f)
+      fromEventPattern(e => model.onDidChangeContent(e)).pipe(debounceTime(100)).subscribe(f)
       editorRef.current = editor
     }
   }
