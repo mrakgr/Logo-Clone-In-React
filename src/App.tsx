@@ -286,7 +286,7 @@ function App() {
       const model = monaco.editor.createModel(value, "logo-clone-lang", uri);
       const editor = monaco.editor.create(el, { model, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, minimap: { enabled: false } });
       window.onresize = () => {
-        editor.layout({ width: window.innerWidth / 3, height: window.innerHeight / 2 })
+        editor.layout({ width: window.innerWidth / 3, height: window.innerHeight - 24 })
         resizeCanvasWindowSize()
         processModel(model)
       }
