@@ -4,10 +4,11 @@ import './App.css'
 
 import * as monaco from "monaco-editor"
 
-import { string, whitespace, float, Parjser, fail, spaces1, space, result } from 'parjs'
+import { string, whitespace, float, Parjser, fail, spaces1, space, result, eof, newline } from 'parjs'
 import { between, or, then, qthen, thenq, map, mapConst, many, thenPick } from 'parjs/combinators'
 
 type Op =
+  | [op: "pass"]
   | [op: "center"]
   | [op: "penup"]
   | [op: "pendown"]
@@ -22,17 +23,17 @@ type Op =
   | [op: "go", data: { x: number, y: number }]
   | [op: "pencolor", data: { r: number, g: number, b: number }]
 
-
 const pFloat = () => float().pipe(thenq(whitespace()))
 const pComma = () => string(",").pipe(thenq(whitespace()))
+const pSpace = (hasFollowup : boolean) => hasFollowup ? space().pipe(or(newline(), fail({reason: "expecting space or newline"}))) : result("")
 
-const pTemplate = <T extends string>(key: T) => whitespace().pipe(qthen(key), thenq(space()), thenq(whitespace()), mapConst(key))
-const pZero = <T extends string>(key: T) => pTemplate(key).pipe(map((x): [T] => [x]))
+const pTemplate = <T extends string>(key: T, hasFollowup : boolean) => whitespace().pipe(qthen(key), qthen(pSpace(hasFollowup)), qthen(whitespace()), mapConst(key))
+const pZero = <T extends string>(key: T) => pTemplate(key,false).pipe(map((x): [T] => [x]))
 const pCenter = () => pZero("center")
 const pPenUp = () => pZero("penup")
 const pPenDown = () => pZero("pendown")
 
-const pOne = <T extends string>(key: T) => pTemplate(key).pipe(then(pFloat()))
+const pOne = <T extends string>(key: T) => pTemplate(key,true).pipe(then(pFloat()))
 const pForward = () => pOne("forward")
 const pBackward = () => pOne("backward")
 const pLeft = () => pOne("turnleft")
@@ -45,136 +46,149 @@ const pPenWidth = () => pOne("penwidth")
 const pFloatComma = () => pFloat().pipe(thenq(pComma()))
 const pXY = () => pFloatComma().pipe(then(pFloat())).pipe(map(([x, y]) => ({ x, y })))
 const pXYZ = () => pFloatComma().pipe(then(pFloatComma(), pFloat())).pipe(map(([r, g, b]) => ({ r, g, b })))
-const pGo = () => pTemplate("go").pipe(then(pXY()))
-const pPenColor = () => pTemplate("pencolor").pipe(then(pXYZ()))
+const pGo = () => pTemplate("go",true).pipe(then(pXY()))
+const pPenColor = () => pTemplate("pencolor",true).pipe(then(pXYZ()))
+const pPass = (): Parjser<[op: "pass"]> => whitespace().pipe(qthen(eof()), mapConst(["pass"]))
 
 const pStatement = (): Parjser<Op> =>
-  pCenter().pipe(or(pPenUp(), pPenDown())) // 0
+  pPass().pipe(or(pCenter(), pPenUp(), pPenDown())) // 0
     .pipe(or(pForward(), pBackward(), pLeft(), pRight()), or(pDirection(), pGoX(), pGoY(), pPenWidth())) // 1
     .pipe(or(pGo())) // XY
     .pipe(or(pPenColor())) // XYZ
-    .pipe(or(fail({reason: "expected one of: center, penup, pendown, forward, backward, turnleft, turnright, direction, gox, goy, penwidth, go, pencolor"})))
+    .pipe(or(fail({ reason: "expected one of: center, penup, pendown, forward, backward, turnleft, turnright, direction, gox, goy, penwidth, go, pencolor" })))
 
-interface RGB {r : number, g : number, b : number}
-interface XY {x : number, y : number}
+interface RGB { r: number, g: number, b: number }
+interface XY { x: number, y: number }
 interface State {
-  direction : number
-  penwidth : number
-  position : XY
-  pencolor : RGB
-  penup : boolean
+  direction: number
+  penwidth: number
+  position: XY
+  pencolor: RGB
+  penup: boolean
 }
 
-function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
+function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext("2d")
   if (!ctx) throw Error("Canvas context is null.")
 
-  const centerPos = () => ({x : canvas.width/2, y : canvas.height/2});
-  const state : State = {
+  const startPosition = () => ({ x: canvas.width / 2, y: canvas.height / 2 });
+  const state: State = {
     direction: 0,
     penwidth: 2,
-    position: centerPos(),
-    pencolor: {r: 255, g: 255, b: 255},
+    position: startPosition(),
+    pencolor: { r: 0, g: 0, b: 0 },
     penup: true,
   }
 
-  const rgbCssString = ({r,g,b} : RGB) => `rgb(${r},${g},${b})`
+  const rgbCssString = ({ r, g, b }: RGB) => `rgb(${r},${g},${b})`
 
   const moveToState = () => {
-    ctx.moveTo(state.position.x,state.position.y)
+    ctx.moveTo(state.position.x, state.position.y)
   }
   const center = () => {
-    state.position = centerPos()
+    state.position = startPosition()
     moveToState()
   }
 
   const resetCtx = () => {
     ctx.beginPath()
-    ctx.clearRect(0,0,canvas.width,canvas.height)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
     moveToState()
     ctx.lineWidth = state.penwidth
     ctx.strokeStyle = rgbCssString(state.pencolor)
   }
 
-  const forward = (q : number) => {
-    const hypothenuze = state.direction/360*2*Math.PI
-    state.position.x += Math.cos(hypothenuze)*q
-    state.position.y += Math.sin(hypothenuze)*q
-    state.penup ? ctx.lineTo(state.position.x,state.position.y) : moveToState()
+  const forward = (q: number) => {
+    const hypothenuze = state.direction / 360 * 2 * Math.PI
+    state.position.x += Math.sin(hypothenuze) * q
+    state.position.y -= Math.cos(hypothenuze) * q
+    state.penup ? ctx.lineTo(state.position.x, state.position.y) : moveToState()
   }
 
-  const turnright = (q : number) => {
+  const turnright = (q: number) => {
     state.direction = (state.direction + q) % 360
   }
 
-  const direction = (q : number) => {
+  const direction = (q: number) => {
     state.direction = q % 360;
   }
 
-  const go = (pos : XY) => {
+  const go = (pos: XY) => {
     state.position = pos
     moveToState()
   }
 
-  const penup = (q : boolean) => {
+  const flush = () => {
+    ctx.stroke()
+    ctx.beginPath()
+    moveToState()
+  }
+
+  const penup = (q: boolean) => {
+    flush()
     state.penup = q
   }
 
-  const penwidth = (q : number) => {
+  const penwidth = (q: number) => {
+    flush()
     ctx.lineWidth = state.penwidth = q
   }
 
-  const pencolor = (q : RGB) => {
+  const pencolor = (q: RGB) => {
+    flush()
     ctx.strokeStyle = rgbCssString(q)
   }
 
-  const process = ([op,data] : Op) => {
+  const process = ([op, data]: Op) => {
     switch (op) {
-      case "forward" : {
+      case "pass": {
+        break
+      }
+      case "forward": {
         forward(data)
         break;
       }
-      case "backward" : {
+      case "backward": {
         forward(-data)
         break
       }
-      case "turnright" : {
+      case "turnright": {
         turnright(data)
         break
       }
-      case "turnleft" : {
+      case "turnleft": {
         turnright(-data)
         break
       }
-      case "direction" : {
+      case "direction": {
         direction(data)
         break
       }
-      case "center" : {
+      case "center": {
         center()
         break
       }
-      case "go" : {
+      case "go": {
         go(data)
         break
       }
-      case "gox" : {
-        go({...state.position, x: data})
+      case "gox": {
+        go({ ...state.position, x: data })
         break
       }
-      case "goy" : {
-        go({...state.position, y: data})
+      case "goy": {
+        go({ ...state.position, y: data })
         break
       }
-      case "penup" : {
+      case "penup": {
         penup(true)
         break
       }
-      case "pendown" : {
+      case "pendown": {
         penup(false)
         break
       }
-      case "penwidth" : {
+      case "penwidth": {
         penwidth(data)
         break
       }
@@ -182,7 +196,7 @@ function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
         pencolor(data)
         break
       }
-      default : {
+      default: {
         throw Error(`Unfilled case for op: ${op}`)
       }
     }
@@ -194,29 +208,40 @@ function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
 }
 
 function App() {
-const editorRef: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null> = useRef(null);
-const canvasRef: MutableRefObject<HTMLCanvasElement | null> = useRef(null);
+  const editorRef: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null> = useRef(null);
+  const canvasRef: MutableRefObject<HTMLCanvasElement | null> = useRef(null);
 
-function setupMonaco(el: HTMLDivElement) {
-  if (!editorRef.current) {
-    const uri = monaco.Uri.parse("inmemory://test");
-    const value = "forward 150\nbackward"
-    const model = monaco.editor.createModel(value, "logo-clone-lang", uri);
-    const editor = monaco.editor.create(el, { model });
-    const f = () => {
-      const ops = validate(model)
-      ops ? drawOps(ops) : null
-    }
-    f()
-    model.onDidChangeContent(f);
-    editorRef.current = editor
+  const drawOps = (ops: Op[]) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    drawOpsOnCanvas(ops, canvas)
   }
-}
 
-const drawOps = (ops: Op[]) => {
-  const canvas = canvasRef.current
-  if (!canvas) return
-    drawOpsOnCanvas(ops,canvas)
+  const processModel = (model: monaco.editor.ITextModel | null | undefined) => {
+    if (!model) return
+    const ops = validate(model)
+    ops ? drawOps(ops) : null
+  }
+
+  const setupMonaco = (el: HTMLDivElement) => {
+    if (!editorRef.current) {
+      const uri = monaco.Uri.parse("inmemory://test");
+      const value = window.localStorage.getItem("text") ?? "forward 150\nbackward"
+      const model = monaco.editor.createModel(value, "logo-clone-lang", uri);
+      const editor = monaco.editor.create(el, { model });
+      const f = () => {
+        window.localStorage.setItem("text", model.getValue())
+        processModel(model)
+      }
+      processModel(model)
+      model.onDidChangeContent(f);
+      editorRef.current = editor
+    }
+  }
+
+  const setupCanvas = (el : HTMLCanvasElement) => {
+    canvasRef.current = el
+    processModel(editorRef.current?.getModel())
   }
 
   function validate(model: monaco.editor.ITextModel) {
@@ -236,7 +261,7 @@ const drawOps = (ops: Op[]) => {
             startLineNumber: st.line,
             endLineNumber: st.line,
             startColumn: st.statement.trace.location.column,
-            endColumn: model.getLineLength(st.line)+1,
+            endColumn: model.getLineLength(st.line) + 1,
           })
           break
         }
@@ -246,16 +271,14 @@ const drawOps = (ops: Op[]) => {
     return errors.length === 0 ? ops : null
   }
 
-
-
   return (
     <div style={{ width: "1800px", height: "900px", backgroundColor: "lightgray", border: "2px gray solid", display: "flex", flexDirection: "row" }}>
       <div style={{ flex: 1 }}>
         <div ref={setupMonaco} style={{ height: "100%" }}></div>
       </div>
       <div style={{ flex: 1 }}>
-        <div>
-          <canvas ref={canvasRef} >Your browser does not support the canvas element.</canvas>
+        <div style={{ height: "100%" }}>
+          <canvas ref={setupCanvas} style={{ height: "100%", width: "100%" }}>Your browser does not support the canvas element.</canvas>
         </div>
       </div>
     </div>
