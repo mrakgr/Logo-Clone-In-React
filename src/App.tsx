@@ -100,12 +100,7 @@ function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
     const hypothenuze = state.direction/360*2*Math.PI
     state.position.x += Math.cos(hypothenuze)*q
     state.position.y += Math.sin(hypothenuze)*q
-
-    if (state.penup) {
-      ctx.lineTo(state.position.x,state.position.y)
-    } else {
-      moveToState()
-    }
+    state.penup ? ctx.lineTo(state.position.x,state.position.y) : moveToState()
   }
 
   const turnright = (q : number) => {
@@ -133,8 +128,7 @@ function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
     ctx.strokeStyle = rgbCssString(q)
   }
 
-  resetCtx()
-  for (const [op,data] of ops) {
+  const process = ([op,data] : Op) => {
     switch (op) {
       case "forward" : {
         forward(data)
@@ -193,6 +187,10 @@ function drawOpsOnCanvas(ops : Op [], canvas : HTMLCanvasElement): void {
       }
     }
   }
+
+  resetCtx()
+  ops.forEach(process)
+  ctx.stroke()
 }
 
 function App() {
