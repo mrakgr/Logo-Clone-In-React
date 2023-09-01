@@ -6,6 +6,7 @@ import * as monaco from "monaco-editor"
 
 import { string, whitespace, float, Parjser, fail, spaces1, space, result, eof, newline } from 'parjs'
 import { between, or, then, qthen, thenq, map, mapConst, many, thenPick } from 'parjs/combinators'
+import { debounceTime, fromEventPattern } from 'rxjs'
 
 import turtleImageSrc from './assets/turtle.png'
 
@@ -218,12 +219,39 @@ function drawOpsOnCanvas(ops: Op[], canvas: HTMLCanvasElement, turtleImage: HTML
   drawTurtle()
 }
 
+function validate(model: monaco.editor.ITextModel) {
+  const statements = model.getLinesContent().map((x, i) => ({ line: i + 1, statement: pStatement().parse(x) }))
+  const errors: monaco.editor.IMarkerData[] = []
+  const ops: Op[] = []
+  for (const st of statements) {
+    switch (st.statement.kind) {
+      case 'OK': {
+        ops.push(st.statement.value)
+        break
+      }
+      default: {
+        errors.push({
+          severity: monaco.MarkerSeverity.Error,
+          message: st.statement.reason.toString(),
+          startLineNumber: st.line,
+          endLineNumber: st.line,
+          startColumn: st.statement.trace.location.column,
+          endColumn: model.getLineLength(st.line) + 1,
+        })
+        break
+      }
+    }
+  }
+  monaco.editor.setModelMarkers(model, '', errors)
+  return errors.length === 0 ? ops : null
+}
+
 function App() {
   const editorRef: MutableRefObject<monaco.editor.IStandaloneCodeEditor | null> = useRef(null);
   const canvasRef: MutableRefObject<HTMLCanvasElement | null> = useRef(null);
   const turtleImage = useMemo(() => {
     const x = new Image()
-    x.onload = () => { processModel(editorRef.current?.getModel()) }
+    x.onload = () => { tryProcessModel() }
     x.src = turtleImageSrc
     return x
   }, [])
@@ -234,10 +262,13 @@ function App() {
     drawOpsOnCanvas(ops, canvas, turtleImage)
   }
 
-  const processModel = (model: monaco.editor.ITextModel | null | undefined) => {
-    if (!model) return
+  const processModel = (model: monaco.editor.ITextModel) => {
     const ops = validate(model)
     ops ? drawOps(ops) : null
+  }
+  const tryProcessModel = () => {
+    const model = editorRef.current?.getModel()
+    model ? processModel(model) : null
   }
 
   const setupMonaco = (el: HTMLDivElement) => {
@@ -251,7 +282,7 @@ function App() {
         processModel(model)
       }
       processModel(model)
-      model.onDidChangeContent(f);
+      fromEventPattern(e => model.onDidChangeContent(e)).pipe(debounceTime(500)).subscribe(f)
       editorRef.current = editor
     }
   }
@@ -261,35 +292,8 @@ function App() {
       canvasRef.current = el
       el.width = 890
       el.height = 920
-      processModel(editorRef.current?.getModel())
+      tryProcessModel()
     }
-  }
-
-  function validate(model: monaco.editor.ITextModel) {
-    const statements = model.getLinesContent().map((x, i) => ({ line: i + 1, statement: pStatement().parse(x) }))
-    const errors: monaco.editor.IMarkerData[] = []
-    const ops: Op[] = []
-    for (const st of statements) {
-      switch (st.statement.kind) {
-        case 'OK': {
-          ops.push(st.statement.value)
-          break
-        }
-        default: {
-          errors.push({
-            severity: monaco.MarkerSeverity.Error,
-            message: st.statement.reason.toString(),
-            startLineNumber: st.line,
-            endLineNumber: st.line,
-            startColumn: st.statement.trace.location.column,
-            endColumn: model.getLineLength(st.line) + 1,
-          })
-          break
-        }
-      }
-    }
-    monaco.editor.setModelMarkers(model, '', errors)
-    return errors.length === 0 ? ops : null
   }
 
   return (
