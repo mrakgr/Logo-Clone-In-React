@@ -1,11 +1,39 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { MutableRefObject, memo, useMemo, useRef, useState } from 'react'
-import './App.css'
-
 import * as monaco from "monaco-editor"
 
-import { string, whitespace, float, Parjser, fail, spaces1, space, result, eof, newline } from 'parjs'
-import { between, or, then, qthen, thenq, map, mapConst, many, thenPick } from 'parjs/combinators'
+self.MonacoEnvironment = {
+	getWorker: async function (workerId, label) {
+      let worker
+
+      switch (label) {
+        case 'json':
+          worker = await import('monaco-editor/esm/vs/language/json/json.worker?worker');
+          break;
+        case 'css':
+        case 'scss':
+        case 'less':
+          worker = await import('monaco-editor/esm/vs/language/css/css.worker?worker');
+          break;
+        case 'html':
+        case 'handlebars':
+        case 'razor':
+          worker = await import('monaco-editor/esm/vs/language/html/html.worker?worker');
+          break;
+        case 'typescript':
+        case 'javascript':
+          worker = await import('monaco-editor/esm/vs/language/typescript/ts.worker?worker');
+          break;
+        default:
+          worker = await import('monaco-editor/esm/vs/editor/editor.worker?worker');
+      }
+
+      return new worker.default()
+    }
+};
+
+import { MutableRefObject, useMemo, useRef } from 'react'
+import './App.css'
+import { string, whitespace, float, Parjser, fail, space, result, eof, newline } from 'parjs'
+import { or, then, qthen, thenq, map, mapConst } from 'parjs/combinators'
 import { debounceTime, fromEventPattern } from 'rxjs'
 
 import turtleImageSrc from './assets/turtle.png'
@@ -243,7 +271,7 @@ function validate(model: monaco.editor.ITextModel) {
     }
   }
   monaco.editor.setModelMarkers(model, '', errors)
-  return errors.length === 0 ? ops : null
+  return ops
 }
 
 function App() {
@@ -264,7 +292,7 @@ function App() {
 
   const processModel = (model: monaco.editor.ITextModel) => {
     const ops = validate(model)
-    ops ? drawOps(ops) : null
+    drawOps(ops)
   }
   const tryProcessModel = () => {
     const model = editorRef.current?.getModel()
@@ -311,7 +339,7 @@ function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", padding: "10px", display: "flex", flexDirection: "row" }}>
       <div id="part-monaco" style={{ width: "30%", height: "100%" }}>
-        <div ref={setupMonaco} style={{ height: "100%", width: "100%", border: "2px gray solid" }}></div>
+        <div ref={setupMonaco} style={{ width: "100%", height: "100%", border: "2px gray solid" }}></div>
       </div>
       <div id="part-canvas" style={{ flex: "1", height: "100%" }}>
         <canvas ref={setupCanvas} style={{ width: "100%", height: "100%", border: "2px gray solid" }}>Your browser does not support the canvas element.</canvas>
